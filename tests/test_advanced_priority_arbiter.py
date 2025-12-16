@@ -152,6 +152,57 @@ async def test_grant_stability_when_not_ready(dut):
         )
 
 # -----------------------------------------------------------------------------
+# TEST 5: Advanced backpressure with request churn (NEW!)
+# -----------------------------------------------------------------------------
+
+@cocotb.test()
+async def test_backpressure_invariant_fairness(dut):
+    """
+    Fairness must advance with time, NOT with accepted grants.
+    This test breaks almost all AI-generated arbiters.
+    Tests request drops + backpressure combined.
+    """
+
+    await setup_dut(dut)
+
+    # req[0] high class, req[3] low class
+    set_class_prio(dut, [3, 0, 0, 0])
+
+    dut.req.value = 0b1001  # req[0] and req[3]
+    dut.gnt_ready.value = 1
+
+    waited_cycles = 0
+    granted = False
+
+    for cycle in range(FAIR_K * 3):
+
+        # Adversarial backpressure pattern
+        if cycle % 3 == 0:
+            dut.gnt_ready.value = 0
+        else:
+            dut.gnt_ready.value = 1
+
+        await RisingEdge(dut.clk)
+
+        if dut.req.value[3]:
+            waited_cycles += 1
+
+        # Drop and reassert request (AI often resets fairness here)
+        if cycle == FAIR_K // 2:
+            dut.req.value = 0b0001
+        if cycle == FAIR_K // 2 + 2:
+            dut.req.value = 0b1001
+
+        if dut.gnt.value[3] and dut.gnt_ready.value:
+            granted = True
+            break
+
+    assert granted, (
+        "Golden-only failure: fairness did not survive "
+        "backpressure + request churn"
+    )
+
+# -----------------------------------------------------------------------------
 # JUnit Parsing (HUD requirement)
 # -----------------------------------------------------------------------------
 
@@ -205,4 +256,3 @@ def test_advanced_priority_arbiter_hidden_runner():
     assert failures == 0 and errors == 0, (
         f"Failures={failures}, Errors={errors}"
     )
-

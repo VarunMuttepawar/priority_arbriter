@@ -1,0 +1,11 @@
+# Makefile for running cocotb tests on advanced priority arbiter
+
+TOPLEVEL_LANG = verilog
+SIM = icarus
+
+VERILOG_SOURCES = $(PWD)/sources/advanced_priority_arbiter.sv
+TOPLEVEL = advanced_priority_arbiter
+MODULE = test_advanced_priority_arbiter
+
+include $(shell cocotb-config --makefiles)/Makefile.sim
+
