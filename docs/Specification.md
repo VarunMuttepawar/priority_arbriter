@@ -1,25 +1,47 @@
-Design a priority arbiter for N requesters that combines fixed priority with aging-based fairness.
-The arbiter must ensure forward progress while preserving priority ordering whenever possible.
+The arbiter supports:
 
-Each requester has:
-A base priority and an effective priority which increases over time with aging.
+Multiple concurrent requesters
 
-The arbiter uses the dynamic priority to select grants.
+Programmable class-based priority
 
-Lower indices correspond to higher base priority.
+A fairness mechanism to avoid indefinite starvation
 
-Requesters that are not granted will increase their effcective priority over time.
+Downstream backpressure via a ready/valid-style interface
 
-Aging is related to how long a requester has been waiting
+The design is expected to operate correctly under continuous load, intermittent backpressure, and dynamic request patterns.
 
-At most one grant may be asserted per cycle
+2.1 Arbitration Behavior
+At most one requester shall be granted access in any given cycle.
 
-Grants are issued only to active requesters
+When multiple requests are asserted, the arbiter shall select one requester based on:
 
-When multiple requesters compete, priority should influence selection
+a. Class priority
 
-The mechanism should prevent starvation
+b. An internal arbitration mechanism for resolving ties
 
-Requesters that continuously request service should eventually be granted
+Higher class priority requesters should generally be favored over lower class priority requesters.
 
+2.2 Fairness
+The arbiter shall include a mechanism to prevent starvation.
 
+A requester that continues to assert its request should eventually receive a grant.
+
+The fairness mechanism shall be parameterizable via FAIR_K
+
+2.3 Backpressure Handling
+The arbiter shall observe the gnt_ready signal from downstream logic.
+
+When gnt_ready is deasserted:
+
+The currently selected grant, if any, shall be held stable.
+
+No new grant shall be issued until backpressure is released.
+
+2.5 Reset Behavior
+The arbiter shall support an active-low reset.
+
+Upon reset:
+
+All internal state shall return to a known value
+
+No grants shall be issued unless valid requests are present
