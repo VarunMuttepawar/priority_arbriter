@@ -212,8 +212,170 @@ Deliverables
 - Module shall match the interface specification exactly (port names, widths, types)
 - Design shall pass all hidden test cases
 
-Hints and Recommendations
+## Hints and Recommendations
 
-- Backpressure handling requires careful state management
-- Test your design with prolonged backpressure scenarios
+### Architecture Overview
+Consider breaking the design into these logical components:
+1. **Priority Selection Logic** - Determines which requester has highest effective priority
+2. **Fairness/Aging Logic** - Tracks waiting time and adjusts effective priorities
+3. **Grant Generation** - Produces one-hot grant output with valid signal
+4. **Backpressure State Machine** - Holds grants when downstream is not ready
+
+### Implementation Approach
+
+**Step 1: Start with Basic Arbitration**
+- First implement the one-hot grant encoding (R1, R2)
+- Ensure grants are only issued to active requesters (R3)
+- Verify grant_valid consistency
+- Test with a single requester to confirm basic operation
+
+**Step 2: Add Class-Based Priority**
+- Use `class_prio[]` values to select among multiple requesters (R4)
+- Implement tie-breaking for equal priorities (R5)
+- Consider using a priority encoder or comparison tree
+- Test with multiple requesters having different priorities
+
+**Step 3: Implement Fairness Mechanism**
+- Track "waiting time" or "age" for each requester (R6, R7)
+- The fairness counter should increment every cycle a request is active
+- When a requester's fairness counter reaches a threshold, boost its effective priority
+- Reset the fairness counter when that requester is granted
+- Think about: effective_priority = class_prio + fairness_boost
+
+**Step 4: Add Backpressure Handling**
+- When `gnt_ready = 0`, hold the current grant stable (R9)
+- Use a register to store the held grant
+- While holding a grant, do NOT issue new grants (R12)
+- **CRITICAL**: Fairness counters should continue to increment during backpressure (R8)
+
+**Step 5: Handle Edge Cases**
+- Request deassertion during held grant (R10, Section 6.6)
+- Reset behavior (R13-R15)
+- All requests deassert (Section 6.1)
+
+### Key Design Decisions
+
+**Fairness Mechanism Design:**
+- Option A: Counter per requester that increments when request is active
+  - When counter >= FAIR_K, add boost to priority
+  - Reset counter on grant
+  
+- Option B: Priority accumulator per requester
+  - effective_prio = class_prio + min(wait_time, FAIR_K)
+  - Reset wait_time on grant
+
+**Backpressure State:**
+- Need to distinguish between "normal arbitration" and "holding grant"
+- Consider a state register or flag: `holding_grant`
+- When holding: freeze grant output, continue fairness updates
+
+**Priority Comparison:**
+- With N requesters, you need to find the maximum effective priority
+- Consider using a tree of comparators
+- Or use a loop in always_comb to find the highest priority active requester
+
+### Critical Requirements to Remember
+
+⚠️ **Most Common Mistakes:**
+
+1. **Fairness stops during backpressure** (violates R8)
+   - Wrong: Only increment fairness counters when gnt_ready = 1
+   - Correct: Increment fairness every cycle a request is active, regardless of gnt_ready
+
+2. **Fairness based on grants instead of time** (violates R8)
+   - Wrong: Increment fairness only when someone else gets granted
+   - Correct: Increment fairness based on elapsed cycles (time)
+
+3. **Issuing new grants during backpressure** (violates R12)
+   - Wrong: Arbitrate normally even when gnt_ready = 0
+   - Correct: Hold the current grant stable until gnt_ready = 1
+
+4. **Not holding grant when request deasserts during backpressure** (violates R9)
+   - Wrong: Clear grant when req deasserts
+   - Correct: Hold grant until backpressure releases, even if req deasserts
+
+5. **Non-one-hot grant encoding** (violates R1)
+   - Wrong: Multiple bits set in gnt[]
+   - Correct: At most one bit set
+
+### Testing Strategy
+
+Start with simple scenarios and build up:
+1. Single requester with no backpressure
+2. Two requesters with different priorities, no backpressure
+3. Multiple requesters with same priority (test tie-breaking)
+4. Low priority requester waiting (test fairness activation)
+5. Short backpressure periods (1-2 cycles)
+6. Long backpressure periods (> FAIR_K cycles)
+7. Request deassertion during backpressure
+
+### Code Structure Suggestions
+
+```systemverilog
+// Consider this structure (pseudocode):
+
+// 1. Compute effective priorities
+logic [PRIO_WIDTH:0] effective_prio [N-1:0];
+always_comb begin
+    for (int i = 0; i < N; i++) begin
+        effective_prio[i] = class_prio[i] + fairness_boost[i];
+    end
+end
+
+// 2. Find highest priority active requester
+logic [N-1:0] selected;
+// ... priority selection logic ...
+
+// 3. Handle backpressure and generate grants
+always_ff @(posedge clk or negedge reset) begin
+    if (!reset) begin
+        // Reset logic
+    end else if (gnt_ready) begin
+        // Normal arbitration: issue new grant
+    end else begin
+        // Backpressure: hold current grant
+    end
+end
+
+// 4. Update fairness counters every cycle
+always_ff @(posedge clk or negedge reset) begin
+    for (int i = 0; i < N; i++) begin
+        if (!reset) begin
+            fairness_counter[i] <= 0;
+        end else if (granted[i] && gnt_ready) begin
+            fairness_counter[i] <= 0;  // Reset on grant
+        end else if (req[i]) begin
+            fairness_counter[i] <= saturate(fairness_counter[i] + 1);
+        end
+    end
+end
+```
+
+### Debugging Tips
+
+- Add assertions to verify one-hot encoding
+- Check that gnt_valid matches (|gnt)
+- Monitor fairness counters to ensure they increment correctly
+- Verify grants don't change when gnt_ready = 0
+- Use waveforms to trace backpressure scenarios
+
+### Performance Notes
+
+- The design should be pipelined: arbitration completes in 1 cycle
+- Consider making priority comparison combinational for lower latency
+- Fairness updates can be sequential (in always_ff)
+- Grant output can be registered for timing closure
+
+### Final Checklist
+
+Before considering your design complete:
+- [ ] One-hot grant encoding verified
+- [ ] gnt_valid consistency checked
+- [ ] Priority ordering works correctly
+- [ ] Fairness mechanism prevents starvation
+- [ ] Fairness advances during backpressure (time-based!)
+- [ ] Grants held correctly during backpressure
+- [ ] Reset behavior is correct
+- [ ] All edge cases handled
+- [ ] Module interface matches specification exactly
 
