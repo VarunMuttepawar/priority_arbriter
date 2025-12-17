@@ -309,48 +309,6 @@ Start with simple scenarios and build up:
 6. Long backpressure periods (> FAIR_K cycles)
 7. Request deassertion during backpressure
 
-### Code Structure Suggestions
-
-```systemverilog
-// Consider this structure (pseudocode):
-
-// 1. Compute effective priorities
-logic [PRIO_WIDTH:0] effective_prio [N-1:0];
-always_comb begin
-    for (int i = 0; i < N; i++) begin
-        effective_prio[i] = class_prio[i] + fairness_boost[i];
-    end
-end
-
-// 2. Find highest priority active requester
-logic [N-1:0] selected;
-// ... priority selection logic ...
-
-// 3. Handle backpressure and generate grants
-always_ff @(posedge clk or negedge reset) begin
-    if (!reset) begin
-        // Reset logic
-    end else if (gnt_ready) begin
-        // Normal arbitration: issue new grant
-    end else begin
-        // Backpressure: hold current grant
-    end
-end
-
-// 4. Update fairness counters every cycle
-always_ff @(posedge clk or negedge reset) begin
-    for (int i = 0; i < N; i++) begin
-        if (!reset) begin
-            fairness_counter[i] <= 0;
-        end else if (granted[i] && gnt_ready) begin
-            fairness_counter[i] <= 0;  // Reset on grant
-        end else if (req[i]) begin
-            fairness_counter[i] <= saturate(fairness_counter[i] + 1);
-        end
-    end
-end
-```
-
 ### Debugging Tips
 
 - Add assertions to verify one-hot encoding
