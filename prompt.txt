@@ -1,13 +1,7 @@
-Implement a priority arbiter with aging in sources/priority_arbiter.sv.
+Advanced Priority Arbiter
 
-The arbiter must:
-1. Support N requesters with configurable base priorities
-2. Implement effective priority aging to prevent starvation
-3. Reset effective priority when a request is granted
-4. Maintain priority when requests are dropped (not continuously asserted)
-5. Saturate effective priority at maximum (no wrap-around)
+Implement a parameterizable priority arbiter that selects one requester per cycle from multiple competing requesters.
 
-See docs/Specification.md for complete interface and behavioral requirements.
+The arbiter should support class-based priority, fairness, and backpressure handling.
 
-Key challenge: Correctly implement the aging logic for continuous requests while handling grant resets and request drops.
-
+check Specification for more detailed implementation.
